@@ -1,0 +1,6 @@
+#!/bin/bash
+
+fname=`qstat -j $1 | grep NONE| cut -f 4 -d : | sed "s/.qsubout//g"`
+echo $fname
+tail -f $fname
+

@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+if [ -z "$1" ]
+then
+    #nodes="$(seq 1 5)"
+    nodes="1 2 4"
+else
+    nodes=$1
+fi
+
+for node in $nodes
+do
+    echo node0$node $(ssh n$node "ps -Af | grep -e \"\/MATLAB\" | grep -v grep | cut -f 1 -d ' ' | sort -u")
+done

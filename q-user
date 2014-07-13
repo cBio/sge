@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# (@) Andre Kahles 2013
+
+set -e
+
+if [ -z "$1" ]
+then
+    user="$(whoami)"
+else
+    user="$1"
+fi
+
+if [ "$user" == "all" ]
+then
+    users=$(qstat | grep -w -e r -e Rr | sed -e "s/  */ /g" | cut -f 5 -d ' ' | sort -u)
+else
+    users=$user
+fi
+
+for user in $users
+do
+    running="$(qstat -u $user | grep -w -e r -e Rr | cut -f 2 -d '@' | cut -f 1 -d '.' | sort | uniq -c)"
+    echo -e "\njobs of user ${user}\n"
+    if [ -z "$running" ]
+    then
+        echo -e "\t0"
+    else
+        echo -e "$running"
+    fi
+done

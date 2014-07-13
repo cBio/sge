@@ -1,0 +1,190 @@
+#!/bin/bash
+
+#RACKDEF=/usr/local/sge/q-tools/racks.txt
+RACKDEF=/cbio/grlab/share/software/cluster_tools/racks_sd.txt
+MAXWIDTH=72
+COLORZ=1
+declare -a slotload
+declare -a loadavg
+
+debug()
+{
+	# uncomment to activate debugging
+	: # echo "$*" 1>&2
+}
+
+print_help_and_die()
+{
+	echo "${0##*/}: show cluster rack overview"
+	echo "1st column: node number, 2nd column: load average, 3rd column: jobs/maxjobs"
+	echo "colors are according to load: red (highest), yellow, green, cyan (idle)."
+	echo "red background means node is powered off or dead"
+	echo "options:"
+	echo "	-h	print help"
+	echo "	-n	do not use colors"
+	echo "	-c	path to racks.txt file (default: $RACKDEF)"
+	exit 1
+}
+
+get_load()
+{
+
+	local i
+
+	result="$(qstat -f -q all.q | awk '/node/ {
+		gsub("all.q@node", "", $1)
+		load = $4
+		if (load == "-NA-") load = -1
+		printf "%s:%s:%s\n", $1, $3, load * 100
+	}')"
+	if [[ $? -ne 0 ]]; then
+		debug "failed to parse qstat output: $result"
+		exit 1
+	fi
+	for i in $result; do
+		local n=${i%%.mskcc-sdsc.local:*}
+        n=${n#0}
+		local s=node${i%:*}
+		slotload[$n]="${s#*:}"
+		loadavg[$n]="${i##*:}"
+	done
+}
+
+# $1: node number
+get_maxjobs()
+{
+	result="${slotload[$1]##*/}"
+	ret=0
+	[[ -n "$result" ]] && return
+	result="failed to get maxjobs of node $1"
+	debug "$result"
+	ret=-1
+}
+
+# find out color for a specific node
+# depending on load/slots output r (red), y (yellow), g (green) or d (unavaible)
+get_load_color()
+{
+	local maxjobs nodenum="$1"
+	local avg="${loadavg[$nodenum]}"
+
+	result="d"
+	[[ "$avg" -lt 0 ]] && return
+
+	result="i" # idle nodes
+	[[ "$avg" = "0.00" ]] && return
+
+	get_maxjobs "$nodenum"
+	[[ $ret -lt 0 ]] && return
+	maxjobs="$result"
+
+	result="r" # red for nodes with loadavg higher than number of cores
+	[[ "$avg" -ge $(($maxjobs * 100)) ]] && return
+
+	result="y" # yellow if loadavg * 2 > number of cores
+	[[ "$(($avg * 2))" -ge "$(($maxjobs * 100))" ]] && return
+
+	result="g" # green for all others
+}
+
+replace_colorz () {
+	if [ $COLORZ -eq 1 ]
+	then
+		sed $'
+			s/r/\e[31m/g;
+			s/y/\e[33m/g;
+			s/g/\e[32m/g;
+			s/i/\e[36m/g;
+			s/d/\e[41m/g;
+			s/s/\e[0m/g
+		'
+	else
+		sed 's/[rygids]//g'
+	fi
+}
+
+rack_contents()
+{
+	local rack="$1" n nodes content= space="       "
+
+	nodes="$(awk "\$1==\"$rack\" {print \$2}" < $RACKDEF)"
+	if [[ $? -ne 0 ]]; then
+		echo "failed to parse $RACKDEF for node numbers of rack #$1"
+		exit 1
+	fi
+	for nn in $nodes; do
+        n=${nn#node}
+        n=${n#0}
+
+		local color maxjobs percent load space="    " space1 space2
+
+		get_load_color "$n"
+		[[ $ret -lt 0 ]] && continue
+		color="$result"
+
+		get_maxjobs "$n"
+		[[ $ret -lt 0 ]] && continue
+		maxjobs="$result"
+
+		percent="$((${loadavg[$n]} / $maxjobs))"
+		debug "node $n: load: ${loadavg[$n]}, maxjobs: $maxjobs, percent: $percent %"
+		if [[ "$percent" -lt 0 ]]; then
+			percent="-NA-"
+			space1=""
+		else
+			[[ "$percent" -gt 999 ]] && percent="999"
+			space1="${space:1:$((3 - ${#percent}))}"
+			percent="$percent%"
+		fi
+
+		load="${slotload[$n]}"
+		space2="${space:1:$((7 - ${#load}))}"
+
+		# the last s is important for color mode (reset)
+		content="$content$color$n $space1$percent $space2${load}s
+"
+	done
+	result="$content"
+}
+
+prck()
+{
+	rack_contents "$1"
+	result="
+RACK $1
+~~~~~~~~~~~~~~~~
+$result
+"
+}
+
+while getopts "nhc:" flag; do
+	case "$flag" in
+	n) COLORZ=0; continue;;
+	h) print_help_and_die;;
+	c) RACKDEF="$OPTARG"
+	esac
+done
+
+get_load
+
+prck 1
+c1="$result"
+#prck abt1
+#c1="$c1$result"
+#prck abt2
+#c1="$c1$result"
+
+#prck 2
+#c2="$result"
+#prck 3
+#c2="$c2$result"
+
+#prck 5
+#c3="$result"
+#prck 6
+#c3="$c3$result"
+#prck 7
+#c3="$c3$result"
+
+
+pr -W $MAXWIDTH -m -t <(echo "$c1") <(echo "$c2") <(echo "$c3") | replace_colorz

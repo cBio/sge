@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# (@) Andre Kahles 2013
+
+set -e
+
+if [ -z "$1" ]
+then
+    nodes="$(qstat | grep -w -e r -e Rr | cut -f 2 -d '@' | cut -f 1 -d  '.' | sort -u)"
+else
+    nodes="$1"
+fi
+
+
+if [ ! -z "$nodes" ]
+then
+    echo ""
+    for node in $nodes
+    do
+        echo "jobs on $node"
+        qstat | grep -w -e r -e Rr | grep $node | sed -e "s/  */ /g" | sed -e "s/^ //g" | cut -f 4 -d ' ' | sort | uniq -c
+        echo ""
+    done
+else
+    echo "no running jobs"
+fi

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+$(dirname $0)/q-status -alc
+
+if [ "$1" != "-nolic" ]
+then
+	echo "free licenses:"
+	qstat -F ml,sigtb,stattb,opttb,imagetb,compiler,simulink,cplex \
+		| sort -u \
+		| awk '/:.*=/ {print $1}' \
+		| sed 's/^g[cfl]://'
+fi
+
+echo
+#grep currentprice /usr/local/sge/balance
